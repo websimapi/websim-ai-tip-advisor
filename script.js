@@ -35,7 +35,13 @@ async function getCreatorStatsForBatch(projects) {
     if (creatorIds.length === 0) return {};
 
     const statsPromises = creatorIds.map(id =>
-        websim.users.getStats({ user: id }).catch(e => {
+        fetch(`/api/v1/users/${id}/stats`).then(res => {
+            if (!res.ok) {
+                console.error(`Failed to fetch stats for user ${id}`);
+                return null;
+            }
+            return res.json();
+        }).catch(e => {
             console.error(`Failed to get stats for user ${id}:`, e);
             return null;
         })
@@ -44,7 +50,7 @@ async function getCreatorStatsForBatch(projects) {
     const results = await Promise.all(statsPromises);
     const creatorStatsMap = {};
     creatorIds.forEach((id, index) => {
-        if (results[index]) {
+        if (results[index] && results[index].stats) {
             creatorStatsMap[id] = results[index].stats;
         } else {
             creatorStatsMap[id] = { total_likes: 0, total_views: 0 };
@@ -120,11 +126,22 @@ async function fetchAndDisplayProjects() {
     loader.style.display = 'block';
 
     try {
-        const response = await websim.get('/api/v1/feed/trending', { limit: BATCH_SIZE, offset });
-        const projects = response.feed.data.filter(item => item.project && item.project.created_by);
+        const url = new URL(`${window.location.origin}/api/v1/feed/trending`);
+        url.searchParams.set('limit', BATCH_SIZE);
+        url.searchParams.set('offset', offset);
+        
+        const res = await fetch(url);
+        if (!res.ok) {
+            throw new Error(`Failed to fetch trending feed: ${res.statusText}`);
+        }
+        const response = await res.json();
+        const projects = response.feed.data.filter(item => item.project && item.project.created_by && item.project.site_id);
         
         if (projects.length === 0) {
             loader.innerHTML = '<p>No more projects to display.</p>';
+            if (offset === 0) {
+                 loader.innerHTML = '<p>Could not find any projects. Please try again later.</p>';
+            }
             return;
         }
 
@@ -166,4 +183,3 @@ window.addEventListener('resize', handleInfiniteScroll);
 
 // Initial load
 fetchAndDisplayProjects();
-
