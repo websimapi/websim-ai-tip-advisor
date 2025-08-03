@@ -4,7 +4,6 @@ let isLoading = false;
 let hideGiveaways = true;
 let currentRange = 'week';
 let currentFeed = 'hot';
-let multiplayerOnly = false;
 
 const projectsContainer = document.getElementById('projects-container');
 const loader = document.getElementById('loader');
@@ -227,9 +226,6 @@ async function fetchAndDisplayProjects() {
         url.searchParams.set('offset', offset);
         url.searchParams.set('range', currentRange);
         url.searchParams.set('feed', currentFeed);
-        if (multiplayerOnly) {
-            url.searchParams.set('is_multiplayer', 'true');
-        }
         
         console.log('Fetching from:', url.toString());
         
@@ -323,7 +319,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const hideGiveawaysToggle = document.getElementById('hide-giveaways');
     const rangeFilter = document.getElementById('range-filter');
     const feedFilter = document.getElementById('feed-filter');
-    const multiplayerToggle = document.getElementById('multiplayer-only');
     
     hideGiveawaysToggle.addEventListener('change', (e) => {
         hideGiveaways = e.target.checked;
@@ -337,11 +332,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     feedFilter.addEventListener('change', (e) => {
         currentFeed = e.target.value;
-        resetAndReload();
-    });
-    
-    multiplayerToggle.addEventListener('change', (e) => {
-        multiplayerOnly = e.target.checked;
         resetAndReload();
     });
 });
