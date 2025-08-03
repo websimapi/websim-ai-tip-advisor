@@ -81,16 +81,17 @@ async function getAiSuggestions(projectsData) {
 }
 
 function renderProjects(projects, suggestions) {
-    projects.forEach(({ project, likes, views, comments }) => {
+    projects.forEach((item) => {
+        const { project, likes, views, comments } = item;
         const creator = project.created_by;
         const suggestion = suggestions[project.id] || { suggestedTip: 'N/A', reasoning: 'AI analysis not available.' };
         
         const card = document.createElement('div');
         card.className = 'project-card';
         
-        const thumbnailUrl = project.thumbnail?.url || 'https://images.websim.com/v1/site/' + project.site_id + '/600';
+        const thumbnailUrl = project.thumbnail?.url || (project.site_id ? `https://images.websim.com/v1/site/${project.site_id}/600` : '');
         const projectUrl = `https://websim.com/p/${project.id}`;
-        const creatorUrl = `https://websim.com/@${creator.username}`;
+        const creatorUrl = creator ? `https://websim.com/@${creator.username}`: '';
 
         card.innerHTML = `
             <a href="${projectUrl}" target="_blank">
@@ -147,14 +148,14 @@ async function fetchAndDisplayProjects() {
 
         const creatorStats = await getCreatorStatsForBatch(projects);
 
-        const projectsDataForAI = projects.map(({ project, likes, views, comments }) => ({
-            projectId: project.id,
+        const projectsDataForAI = projects.map(item => ({
+            projectId: item.project.id,
             projectStats: {
-                views: views,
-                likes: likes,
-                comments: comments
+                views: item.views,
+                likes: item.likes,
+                comments: item.comments
             },
-            creatorStats: creatorStats[project.created_by.id] || { total_likes: 0, total_views: 0 }
+            creatorStats: creatorStats[item.project.created_by.id] || { total_likes: 0, total_views: 0 }
         }));
         
         const suggestions = await getAiSuggestions(projectsDataForAI);
