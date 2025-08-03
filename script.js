@@ -2,6 +2,9 @@ const BATCH_SIZE = 12;
 let offset = 0;
 let isLoading = false;
 let hideGiveaways = true;
+let currentRange = 'week';
+let currentFeed = 'hot';
+let multiplayerOnly = false;
 
 const projectsContainer = document.getElementById('projects-container');
 const loader = document.getElementById('loader');
@@ -170,6 +173,11 @@ async function fetchAndDisplayProjects() {
         const url = new URL(`${window.location.origin}/api/v1/feed/trending`);
         url.searchParams.set('limit', BATCH_SIZE);
         url.searchParams.set('offset', offset);
+        url.searchParams.set('range', currentRange);
+        url.searchParams.set('feed', currentFeed);
+        if (multiplayerOnly) {
+            url.searchParams.set('is_multiplayer', 'true');
+        }
         
         console.log('Fetching from:', url.toString());
         
@@ -244,20 +252,42 @@ function handleInfiniteScroll() {
     }
 }
 
-window.addEventListener('scroll', handleInfiniteScroll);
-window.addEventListener('resize', handleInfiniteScroll);
+function resetAndReload() {
+    projectsContainer.innerHTML = '';
+    offset = 0;
+    fetchAndDisplayProjects();
+}
 
-// Toggle event listener
+// Toggle and filter event listeners
 document.addEventListener('DOMContentLoaded', () => {
     const hideGiveawaysToggle = document.getElementById('hide-giveaways');
+    const rangeFilter = document.getElementById('range-filter');
+    const feedFilter = document.getElementById('feed-filter');
+    const multiplayerToggle = document.getElementById('multiplayer-only');
+    
     hideGiveawaysToggle.addEventListener('change', (e) => {
         hideGiveaways = e.target.checked;
-        // Clear current projects and reload
-        projectsContainer.innerHTML = '';
-        offset = 0;
-        fetchAndDisplayProjects();
+        resetAndReload();
+    });
+    
+    rangeFilter.addEventListener('change', (e) => {
+        currentRange = e.target.value;
+        resetAndReload();
+    });
+    
+    feedFilter.addEventListener('change', (e) => {
+        currentFeed = e.target.value;
+        resetAndReload();
+    });
+    
+    multiplayerToggle.addEventListener('change', (e) => {
+        multiplayerOnly = e.target.checked;
+        resetAndReload();
     });
 });
+
+window.addEventListener('scroll', handleInfiniteScroll);
+window.addEventListener('resize', handleInfiniteScroll);
 
 // Initial load
 fetchAndDisplayProjects();

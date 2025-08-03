@@ -12,6 +12,34 @@
         <h1>AI Tip Advisor</h1>
         <p>Get AI-powered suggestions on how much to tip projects based on their quality, community love, and creator reputation.</p>
         <div class="filter-controls">
+            <div class="filter-group">
+                <label for="range-filter">Time Range:</label>
+                <select id="range-filter">
+                    <option value="all">All Time</option>
+                    <option value="week" selected>This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="day">Today</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label for="feed-filter">Sort By:</label>
+                <select id="feed-filter">
+                    <option value="hot" selected>Hot</option>
+                    <option value="new">New</option>
+                    <option value="top">Top</option>
+                    <option value="engaging">Most Engaging</option>
+                    <option value="viral">Viral</option>
+                    <option value="most_tipped">Most Tipped</option>
+                </select>
+            </div>
+            
+            <label class="toggle-container">
+                <input type="checkbox" id="multiplayer-only">
+                <span class="toggle-slider"></span>
+                Multiplayer Only
+            </label>
+            
             <label class="toggle-container">
                 <input type="checkbox" id="hide-giveaways" checked>
                 <span class="toggle-slider"></span>
