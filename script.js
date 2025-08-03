@@ -81,22 +81,36 @@ async function getAiSuggestions(projectsData) {
 }
 
 function renderProjects(projects, suggestions) {
+    console.log('Rendering', projects.length, 'projects');
+    
     projects.forEach((item) => {
-        const { project, likes, views, comments } = item;
+        const { project } = item;
         const creator = project.created_by;
-        const suggestion = suggestions[project.id] || { suggestedTip: 'N/A', reasoning: 'AI analysis not available.' };
+        const views = item.views || 0;
+        const likes = item.likes || 0;
+        const comments = item.comments || 0;
+        const suggestion = suggestions[project.id] || { 
+            suggestedTip: 25, 
+            reasoning: 'Default suggestion - AI analysis unavailable.' 
+        };
+        
+        console.log('Rendering project:', project.title, 'with suggestion:', suggestion);
         
         const card = document.createElement('div');
         card.className = 'project-card';
         
-        const thumbnailUrl = project.thumbnail?.url || (project.site_id ? `https://images.websim.com/v1/site/${project.site_id}/600` : '');
+        // Use project revision's site_id or fall back to a placeholder
+        const thumbnailUrl = project.thumbnail?.url || 
+                           (item.site?.id ? `https://images.websim.com/v1/site/${item.site.id}/600` : '') ||
+                           (item.project_revision?.site_id ? `https://images.websim.com/v1/site/${item.project_revision.site_id}/600` : '');
+        
         const projectUrl = `https://websim.com/p/${project.id}`;
         const creatorUrl = creator ? `https://websim.com/@${creator.username}`: '';
 
         card.innerHTML = `
-            <a href="${projectUrl}" target="_blank">
+            ${thumbnailUrl ? `<a href="${projectUrl}" target="_blank">
                 <img src="${thumbnailUrl}" alt="${project.title || 'Project thumbnail'}" class="project-thumbnail" onerror="this.style.display='none'">
-            </a>
+            </a>` : ''}
             <div class="card-content">
                 <a href="${projectUrl}" target="_blank" class="project-title">${project.title || 'Untitled Project'}</a>
                 ${creator ? `
@@ -119,6 +133,8 @@ function renderProjects(projects, suggestions) {
         `;
         projectsContainer.appendChild(card);
     });
+    
+    console.log('Finished rendering projects. Total cards:', projectsContainer.children.length);
 }
 
 async function fetchAndDisplayProjects() {
@@ -131,45 +147,65 @@ async function fetchAndDisplayProjects() {
         url.searchParams.set('limit', BATCH_SIZE);
         url.searchParams.set('offset', offset);
         
+        console.log('Fetching from:', url.toString());
+        
         const res = await fetch(url);
         if (!res.ok) {
             throw new Error(`Failed to fetch trending feed: ${res.statusText}`);
         }
         const response = await res.json();
-        const projects = response.feed.data.filter(item => item.project && item.project.created_by && item.project.site_id);
+        
+        console.log('Raw response:', response);
+        console.log('Projects in response:', response.feed?.data?.length);
+        
+        // Less restrictive filtering - only require project and created_by
+        const projects = response.feed?.data?.filter(item => 
+            item.project && 
+            item.project.created_by && 
+            item.project.id
+        ) || [];
+        
+        console.log('Filtered projects:', projects.length);
         
         if (projects.length === 0) {
-            loader.innerHTML = '<p>No more projects to display.</p>';
-            if (offset === 0) {
-                 loader.innerHTML = '<p>Could not find any projects. Please try again later.</p>';
-            }
+            const message = offset === 0 ? 
+                'Could not find any projects. Please try again later.' : 
+                'No more projects to display.';
+            loader.innerHTML = `<p>${message}</p>`;
+            loader.style.display = 'block';
             return;
         }
 
+        console.log('Getting creator stats for', projects.length, 'projects');
         const creatorStats = await getCreatorStatsForBatch(projects);
+        console.log('Creator stats:', creatorStats);
 
         const projectsDataForAI = projects.map(item => ({
             projectId: item.project.id,
             projectStats: {
-                views: item.views,
-                likes: item.likes,
-                comments: item.comments
+                views: item.views || 0,
+                likes: item.likes || 0,
+                comments: item.comments || 0
             },
             creatorStats: creatorStats[item.project.created_by.id] || { total_likes: 0, total_views: 0 }
         }));
         
+        console.log('Data for AI:', projectsDataForAI);
+        
         const suggestions = await getAiSuggestions(projectsDataForAI);
+        console.log('AI suggestions:', suggestions);
         
         renderProjects(projects, suggestions);
         
         offset += projects.length;
+        loader.style.display = 'none';
 
     } catch (error) {
         console.error("Failed to fetch and display projects:", error);
         loader.innerHTML = '<p>Could not load projects. Please try again later.</p>';
+        loader.style.display = 'block';
     } finally {
         isLoading = false;
-        loader.style.display = 'none';
     }
 }
 
