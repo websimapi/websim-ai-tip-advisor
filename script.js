@@ -1,6 +1,7 @@
 const BATCH_SIZE = 12;
 let offset = 0;
 let isLoading = false;
+let hideGiveaways = true;
 
 const projectsContainer = document.getElementById('projects-container');
 const loader = document.getElementById('loader');
@@ -80,11 +81,34 @@ async function getAiSuggestions(projectsData) {
     }
 }
 
+function isGiveawayOrTipAskingSite(project) {
+    const title = (project.title || '').toLowerCase();
+    const description = (project.description || '').toLowerCase();
+    
+    const giveawayKeywords = [
+        'giveaway', 'free credits', 'free tips', 'win credits', 'earn credits',
+        'credit generator', 'free money', 'get rich', 'make money fast',
+        'tip me', 'send tips', 'donate credits', 'support me with credits',
+        'please tip', 'need credits', 'credit request', 'asking for tips',
+        'help me with credits', 'fund my', 'crowdfund', 'donation'
+    ];
+    
+    const text = title + ' ' + description;
+    return giveawayKeywords.some(keyword => text.includes(keyword));
+}
+
 function renderProjects(projects, suggestions) {
     console.log('Rendering', projects.length, 'projects');
     
     projects.forEach((item) => {
         const { project } = item;
+        
+        // Skip giveaway/tip-asking sites if toggle is enabled
+        if (hideGiveaways && isGiveawayOrTipAskingSite(project)) {
+            console.log('Skipping giveaway/tip-asking site:', project.title);
+            return;
+        }
+        
         const creator = project.created_by;
         const views = item.views || 0;
         const likes = item.likes || 0;
@@ -159,11 +183,16 @@ async function fetchAndDisplayProjects() {
         console.log('Projects in response:', response.feed?.data?.length);
         
         // Less restrictive filtering - only require project and created_by
-        const projects = response.feed?.data?.filter(item => 
+        let projects = response.feed?.data?.filter(item => 
             item.project && 
             item.project.created_by && 
             item.project.id
         ) || [];
+        
+        // Additional filtering for giveaways if toggle is enabled
+        if (hideGiveaways) {
+            projects = projects.filter(item => !isGiveawayOrTipAskingSite(item.project));
+        }
         
         console.log('Filtered projects:', projects.length);
         
@@ -217,6 +246,18 @@ function handleInfiniteScroll() {
 
 window.addEventListener('scroll', handleInfiniteScroll);
 window.addEventListener('resize', handleInfiniteScroll);
+
+// Toggle event listener
+document.addEventListener('DOMContentLoaded', () => {
+    const hideGiveawaysToggle = document.getElementById('hide-giveaways');
+    hideGiveawaysToggle.addEventListener('change', (e) => {
+        hideGiveaways = e.target.checked;
+        // Clear current projects and reload
+        projectsContainer.innerHTML = '';
+        offset = 0;
+        fetchAndDisplayProjects();
+    });
+});
 
 // Initial load
 fetchAndDisplayProjects();
