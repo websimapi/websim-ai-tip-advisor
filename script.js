@@ -10,20 +10,37 @@ const projectsContainer = document.getElementById('projects-container');
 const loader = document.getElementById('loader');
 
 const systemPrompt = `
-You are an AI expert at evaluating web projects. Your task is to analyze a batch of projects and suggest a fair tip amount in credits for each one.
-You will be given a JSON object containing an array of projects. For each project, you will receive its stats (views, likes, comments) and stats about its creator (total likes and views across all their projects).
+You are an AI expert at evaluating web projects and identifying hidden gems. Your task is to analyze a batch of projects and suggest fair tip amounts in credits, with special attention to helping new and upcoming creators.
 
-Based on this data, you must provide a suggested tip amount and a short, one-sentence justification.
-- Higher engagement (likes, views, comments) should lead to higher tips.
-- A creator with a strong history (high total likes/views) might indicate higher quality work, justifying a better tip.
-- A good ratio of likes to views is a positive signal.
-- Balance these factors to determine a tip. Tip amounts should range from 10 to 500 credits.
+You will receive project data including:
+- Project stats (views, likes, comments)
+- Creator metrics (total stats, averages per project, account age, project count, whether they're new)
 
-Respond ONLY with a single JSON object. The JSON object should have a single key "suggestions" which is an array of objects. Each object in the array must follow this exact schema:
+IMPORTANT PRIORITIES:
+1. IDENTIFY HIDDEN GEMS: Look for high-quality projects from new creators (account age < 30 days or < 5 projects) that deserve more attention
+2. BOOST NEW CREATORS: New creators with promising work should get higher tip suggestions to encourage them
+3. VALUE ENGAGEMENT QUALITY: Focus on like-to-view ratios and comment engagement rather than just raw numbers
+4. REWARD CONSISTENCY: Creators with good average engagement per project show consistent quality
+
+Tip Guidelines:
+- Hidden gems from new creators: 50-500 credits (be generous to help them grow)
+- High engagement projects regardless of creator: 100-400 credits
+- Solid projects from established creators: 25-200 credits
+- Lower engagement projects: 10-100 credits
+
+Consider these factors:
+- High like-to-view ratio (>5%) is excellent
+- Good comment engagement shows community interaction
+- New creators with any decent engagement deserve extra support
+- Consistent creators (good avg stats per project) show reliability
+- Balance helping newcomers while rewarding established quality
+
+Respond ONLY with a single JSON object. The JSON object should have a single key "suggestions" which is an array of objects. Each object must follow this exact schema:
 {
-  "projectId": string, // The ID of the project
-  "suggestedTip": number, // A number between 10 and 500
-  "reasoning": string // A concise, one-sentence explanation for your suggestion.
+  "projectId": string,
+  "suggestedTip": number, // 10-500 credits
+  "reasoning": string, // Mention if it's a hidden gem or from a new creator deserving support
+  "isHiddenGem": boolean // true if this is a promising project from a new creator
 }
 Do not include any other text, comments, or explanations outside of the JSON structure.
 `;
@@ -38,26 +55,51 @@ async function getCreatorStatsForBatch(projects) {
     const creatorIds = [...new Set(projects.map(p => p.project.created_by.id).filter(id => id))];
     if (creatorIds.length === 0) return {};
 
-    const statsPromises = creatorIds.map(id =>
-        fetch(`/api/v1/users/${id}/stats`).then(res => {
-            if (!res.ok) {
-                console.error(`Failed to fetch stats for user ${id}`);
-                return null;
-            }
-            return res.json();
-        }).catch(e => {
-            console.error(`Failed to get stats for user ${id}:`, e);
-            return null;
-        })
-    );
+    // Get both user stats and user profile data for more accurate assessment
+    const statsPromises = creatorIds.map(async id => {
+        try {
+            const [statsRes, userRes, projectsRes] = await Promise.all([
+                fetch(`/api/v1/users/${id}/stats`),
+                fetch(`/api/v1/users/${id}`),
+                fetch(`/api/v1/users/${id}/projects?first=100&has_revision=true`) // Get their projects to calculate averages
+            ]);
+
+            const stats = statsRes.ok ? await statsRes.json() : { stats: { total_likes: 0, total_views: 0 } };
+            const user = userRes.ok ? await userRes.json() : null;
+            const projects = projectsRes.ok ? await projectsRes.json() : { projects: { data: [] } };
+
+            const projectCount = projects.projects?.data?.length || 0;
+            const accountAge = user?.user?.created_at ? 
+                Math.floor((Date.now() - new Date(user.user.created_at).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+            return {
+                id,
+                stats: stats.stats || { total_likes: 0, total_views: 0 },
+                projectCount,
+                accountAge,
+                avgLikesPerProject: projectCount > 0 ? (stats.stats?.total_likes || 0) / projectCount : 0,
+                avgViewsPerProject: projectCount > 0 ? (stats.stats?.total_views || 0) / projectCount : 0,
+                isNewCreator: accountAge < 30 || projectCount < 5 // New if account < 30 days or < 5 projects
+            };
+        } catch (e) {
+            console.error(`Failed to get comprehensive stats for user ${id}:`, e);
+            return {
+                id,
+                stats: { total_likes: 0, total_views: 0 },
+                projectCount: 0,
+                accountAge: 0,
+                avgLikesPerProject: 0,
+                avgViewsPerProject: 0,
+                isNewCreator: true
+            };
+        }
+    });
 
     const results = await Promise.all(statsPromises);
     const creatorStatsMap = {};
-    creatorIds.forEach((id, index) => {
-        if (results[index] && results[index].stats) {
-            creatorStatsMap[id] = results[index].stats;
-        } else {
-            creatorStatsMap[id] = { total_likes: 0, total_views: 0 };
+    results.forEach(result => {
+        if (result && result.id) {
+            creatorStatsMap[result.id] = result;
         }
     });
     return creatorStatsMap;
@@ -118,13 +160,19 @@ function renderProjects(projects, suggestions) {
         const comments = item.comments || 0;
         const suggestion = suggestions[project.id] || { 
             suggestedTip: 25, 
-            reasoning: 'Default suggestion - AI analysis unavailable.' 
+            reasoning: 'Default suggestion - AI analysis unavailable.',
+            isHiddenGem: false
         };
         
         console.log('Rendering project:', project.title, 'with suggestion:', suggestion);
         
         const card = document.createElement('div');
         card.className = 'project-card';
+        
+        // Add special styling for hidden gems
+        if (suggestion.isHiddenGem) {
+            card.classList.add('hidden-gem');
+        }
         
         // Use project revision's site_id or fall back to a placeholder
         const thumbnailUrl = project.thumbnail?.url || 
@@ -134,12 +182,16 @@ function renderProjects(projects, suggestions) {
         const projectUrl = `https://websim.com/p/${project.id}`;
         const creatorUrl = creator ? `https://websim.com/@${creator.username}`: '';
 
+        const hiddenGemBadge = suggestion.isHiddenGem ? 
+            '<span class="hidden-gem-badge">💎 Hidden Gem</span>' : '';
+
         card.innerHTML = `
             ${thumbnailUrl ? `<a href="${projectUrl}" target="_blank">
                 <img src="${thumbnailUrl}" alt="${project.title || 'Project thumbnail'}" class="project-thumbnail" onerror="this.style.display='none'">
             </a>` : ''}
             <div class="card-content">
                 <a href="${projectUrl}" target="_blank" class="project-title">${project.title || 'Untitled Project'}</a>
+                ${hiddenGemBadge}
                 ${creator ? `
                 <div class="creator-info">
                     <a href="${creatorUrl}" target="_blank"><img src="https://images.websim.com/avatar/${creator.username}" alt="${creator.username}" class="creator-avatar"></a>
@@ -222,9 +274,17 @@ async function fetchAndDisplayProjects() {
             projectStats: {
                 views: item.views || 0,
                 likes: item.likes || 0,
-                comments: item.comments || 0
+                comments: item.comments || 0,
+                likeToViewRatio: (item.views || 0) > 0 ? ((item.likes || 0) / (item.views || 0)) * 100 : 0
             },
-            creatorStats: creatorStats[item.project.created_by.id] || { total_likes: 0, total_views: 0 }
+            creatorData: creatorStats[item.project.created_by.id] || { 
+                stats: { total_likes: 0, total_views: 0 },
+                projectCount: 0,
+                accountAge: 0,
+                avgLikesPerProject: 0,
+                avgViewsPerProject: 0,
+                isNewCreator: true
+            }
         }));
         
         console.log('Data for AI:', projectsDataForAI);
